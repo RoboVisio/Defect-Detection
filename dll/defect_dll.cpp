@@ -2,6 +2,9 @@
 // 灰度图先提取中间 ROI，再切分为左右两个工件分别推理，
 // 最终结果回写到未切分的整体 ROI 坐标系。
 #define DEFECT_DLL_EXPORTS
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include "defect_dll.h"
 
 #include "HalconCpp.h"
@@ -519,6 +522,7 @@ void fill_result(const Job& j, float threshold, bool enable_map, DefectResult* o
     out->roi_row2 = R2; out->roi_col2 = C2;
 
     // anomaly map 回贴到未切分的整体 ROI 空间。
+    if (enable_map) {
         const int roi_w = C2 - C1 + 1;
         const int roi_h = R2 - R1 + 1;
         if (roi_w > 0 && roi_h > 0) {
