@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hdevelop file_version="1.2" halcon_version="25.11.0.0">
+<procedure name="main">
+<interface/>
+<body>
+<l>dev_update_off ()</l>
+<l>dev_close_window ()</l>
+<c></c>
+<c>* ============================================</c>
+<c>* Path settings</c>
+<c>* ============================================</c>
+<l>InputDir := 'image'</l>
+<l>OutputDir := 'test_images_out/'</l>
+<l>DebugDir := OutputDir + '/debug'</l>
+<c></c>
+<l>file_exists (OutputDir, OutExist)</l>
+<l>if (OutExist == 0)</l>
+<l>    make_dir (OutputDir)</l>
+<l>endif</l>
+<c></c>
+<l>file_exists (DebugDir, DebugExist)</l>
+<l>if (DebugExist == 0)</l>
+<l>    make_dir (DebugDir)</l>
+<l>endif</l>
+<c></c>
+<c>* ============================================</c>
+<c>* Search image files</c>
+<c>* ============================================</c>
+<l>AllFiles := []</l>
+<l>ImageFiles := []</l>
+<l>list_files (InputDir, ['files','recursive'], AllFiles)</l>
+<l>if (|AllFiles| &gt; 0)</l>
+<l>    tuple_regexp_select (AllFiles, '(?i).*\\.(bmp|png|jpg|jpeg|tif|tiff)$', ImageFiles)</l>
+<l>endif</l>
+<l>NumFiles := |ImageFiles|</l>
+<c></c>
+<l>if (NumFiles == 0)</l>
+<l>    stop ()</l>
+<l>endif</l>
+<c></c>
+<l>WindowOpened := 0</l>
+<c></c>
+<c>* ============================================</c>
+<c>* Batch processing</c>
+<c>* ============================================</c>
+<l>for Index := 0 to NumFiles - 1 by 1</l>
+<l>    FileName := ImageFiles[Index]</l>
+<l>    read_image (Image, FileName)</l>
+<c></c>
+<l>    Preprocess_Gray (Image, GrayROI, LeftGrayROI, RightGrayROI)</l>
+<l>    Preprocess_Color (Image, ColorROI)</l>
+<c></c>
+<l>    write_image (GrayROI, 'bmp', 0, OutputDir + Index + '_crop.bmp')</l>
+<l>    write_image (LeftGrayROI, 'bmp', 0, OutputDir + Index + '_left_crop.bmp')</l>
+<l>    write_image (RightGrayROI, 'bmp', 0, OutputDir + Index + '_right_crop.bmp')</l>
+<c></c>
+<l>    if (WindowOpened == 0)</l>
+<l>        dev_open_window_fit_image (Image, 0, 0, -1, -1, WindowHandle)</l>
+<l>        WindowOpened := 1</l>
+<l>    endif</l>
+<c></c>
+<l>    dev_display (Image)</l>
+<l>    dev_set_color ('green')</l>
+<l>    dev_set_draw ('margin')</l>
+<l>    dev_set_line_width (3)</l>
+<l>    dev_display (GrayROI)</l>
+<c></c>
+<l>    dump_window_image (DebugImage, WindowHandle)</l>
+<l>    write_image (DebugImage, 'bmp', 0, DebugDir + Index + '_debug')</l>
+<l>endfor</l>
+</body>
+<docu id="main">
+<parameters/>
+</docu>
+</procedure>
+<procedure name="Preprocess_Gray">
+<interface>
+<io>
+<par name="Image" base_type="iconic" dimension="0"/>
+</io>
+<oo>
+<par name="GrayROI" base_type="iconic" dimension="0"/>
+<par name="LeftGrayROI" base_type="iconic" dimension="0"/>
+<par name="RightGrayROI" base_type="iconic" dimension="0"/>
+</oo>
+</interface>
+<body>
+<c>* ============================================</c>
+<c>* Procedure: Preprocess_Gray</c>
+<c>* Input : Image</c>
+<c>* Output: GrayROI / LeftGrayROI / RightGrayROI</c>
+<c>* ============================================</c>
+<l>BlackLow := 0</l>
+<l>BlackHigh := 16</l>
+<c></c>
+<l>BandLeftRatio := 0.15</l>
+<l>BandRightRatio := 0.15</l>
+<l>BandTopRatio := 0.18</l>
+<l>BandBottomRatio := 0.18</l>
+<c></c>
+<l>DefaultRow1Ratio := 0.22</l>
+<l>DefaultRow2Ratio := 0.78</l>
+<l>DefaultCol1Ratio := 0.10</l>
+<l>DefaultCol2Ratio := 0.90</l>
+<c></c>
+<l>OpenSize := 5</l>
+<l>BorderMargin := 5</l>
+<l>MinBorderArea := 300</l>
+<c></c>
+<l>MinROIHeight := 150</l>
+<l>MinROIWidth := 250</l>
+<c></c>
+<l>count_channels (Image, Channels)</l>
+<l>if (Channels &gt; 1)</l>
+<l>    rgb1_to_gray (Image, Gray)</l>
+<l>else</l>
+<l>    Gray := Image</l>
+<l>endif</l>
+<c></c>
+<l>get_image_size (Gray, Width, Height)</l>
+<c></c>
+<l>threshold (Gray, RegionBlackRaw, BlackLow, BlackHigh)</l>
+<l>opening_rectangle1 (RegionBlackRaw, RegionBlackOpen, OpenSize, OpenSize)</l>
+<l>connection (RegionBlackOpen, RegionBlackConnAll)</l>
+<l>select_shape (RegionBlackConnAll, RegionBlackValid, 'area', 'and', MinBorderArea, 99999999)</l>
+<l>union1 (RegionBlackValid, RegionBlackUnion)</l>
+<c></c>
+<l>gen_rectangle1 (BandLeft, 0, 0, Height - 1, round(Width * BandLeftRatio))</l>
+<l>gen_rectangle1 (BandRight, 0, round(Width * (1.0 - BandRightRatio)), Height - 1, Width - 1)</l>
+<l>gen_rectangle1 (BandTop, 0, 0, round(Height * BandTopRatio), Width - 1)</l>
+<l>gen_rectangle1 (BandBottom, round(Height * (1.0 - BandBottomRatio)), 0, Height - 1, Width - 1)</l>
+<c></c>
+<l>intersection (RegionBlackUnion, BandLeft, LeftCand)</l>
+<l>intersection (RegionBlackUnion, BandRight, RightCand)</l>
+<l>intersection (RegionBlackUnion, BandTop, TopCand)</l>
+<l>intersection (RegionBlackUnion, BandBottom, BottomCand)</l>
+<c></c>
+<l>connection (LeftCand, LeftConn)</l>
+<l>connection (RightCand, RightConn)</l>
+<l>connection (TopCand, TopConn)</l>
+<l>connection (BottomCand, BottomConn)</l>
+<c></c>
+<l>select_shape (LeftConn, LeftSel, 'area', 'and', MinBorderArea, 99999999)</l>
+<l>select_shape (RightConn, RightSel, 'area', 'and', MinBorderArea, 99999999)</l>
+<l>select_shape (TopConn, TopSel, 'area', 'and', MinBorderArea, 99999999)</l>
+<l>select_shape (BottomConn, BottomSel, 'area', 'and', MinBorderArea, 99999999)</l>
+<c></c>
+<l>count_obj (LeftSel, LeftNum)</l>
+<l>count_obj (RightSel, RightNum)</l>
+<l>count_obj (TopSel, TopNum)</l>
+<l>count_obj (BottomSel, BottomNum)</l>
+<c></c>
+<l>ROI_Row1 := round(Height * DefaultRow1Ratio)</l>
+<l>ROI_Row2 := round(Height * DefaultRow2Ratio)</l>
+<l>ROI_Col1 := round(Width * DefaultCol1Ratio)</l>
+<l>ROI_Col2 := round(Width * DefaultCol2Ratio)</l>
+<c></c>
+<l>if (LeftNum &gt; 0)</l>
+<l>    select_shape_std (LeftSel, LeftMax, 'max_area', 70)</l>
+<l>    smallest_rectangle1 (LeftMax, LR1, LC1, LR2, LC2)</l>
+<l>    ROI_Col1 := LC2 + BorderMargin</l>
+<l>endif</l>
+<l>if (RightNum &gt; 0)</l>
+<l>    select_shape_std (RightSel, RightMax, 'max_area', 70)</l>
+<l>    smallest_rectangle1 (RightMax, RR1, RC1, RR2, RC2)</l>
+<l>    ROI_Col2 := RC1 - BorderMargin</l>
+<l>endif</l>
+<l>if (TopNum &gt; 0)</l>
+<l>    select_shape_std (TopSel, TopMax, 'max_area', 70)</l>
+<l>    smallest_rectangle1 (TopMax, TR1, TC1, TR2, TC2)</l>
+<l>    ROI_Row1 := TR2 + BorderMargin</l>
+<l>endif</l>
+<l>if (BottomNum &gt; 0)</l>
+<l>    select_shape_std (BottomSel, BottomMax, 'max_area', 70)</l>
+<l>    smallest_rectangle1 (BottomMax, BR1, BC1, BR2, BC2)</l>
+<l>    ROI_Row2 := BR1 - BorderMargin</l>
+<l>endif</l>
+<c></c>
+<l>if (ROI_Row1 &lt; 0)</l>
+<l>    ROI_Row1 := 0</l>
+<l>endif</l>
+<l>if (ROI_Col1 &lt; 0)</l>
+<l>    ROI_Col1 := 0</l>
+<l>endif</l>
+<l>if (ROI_Row2 &gt; Height - 1)</l>
+<l>    ROI_Row2 := Height - 1</l>
+<l>endif</l>
+<l>if (ROI_Col2 &gt; Width - 1)</l>
+<l>    ROI_Col2 := Width - 1</l>
+<l>endif</l>
+<c></c>
+<l>if ((ROI_Row2 &lt;= ROI_Row1) or (ROI_Col2 &lt;= ROI_Col1) or ((ROI_Row2 - ROI_Row1) &lt; MinROIHeight) or ((ROI_Col2 - ROI_Col1) &lt; MinROIWidth))</l>
+<l>    ROI_Row1 := round(Height * DefaultRow1Ratio)</l>
+<l>    ROI_Row2 := round(Height * DefaultRow2Ratio)</l>
+<l>    ROI_Col1 := round(Width * DefaultCol1Ratio)</l>
+<l>    ROI_Col2 := round(Width * DefaultCol2Ratio)</l>
+<l>endif</l>
+<c></c>
+<l>if (ROI_Row1 &lt; 0)</l>
+<l>    ROI_Row1 := 0</l>
+<l>endif</l>
+<l>if (ROI_Col1 &lt; 0)</l>
+<l>    ROI_Col1 := 0</l>
+<l>endif</l>
+<l>if (ROI_Row2 &gt; Height - 1)</l>
+<l>    ROI_Row2 := Height - 1</l>
+<l>endif</l>
+<l>if (ROI_Col2 &gt; Width - 1)</l>
+<l>    ROI_Col2 := Width - 1</l>
+<l>endif</l>
+<c></c>
+<l>gen_rectangle1 (ROI_Middle, ROI_Row1, ROI_Col1, ROI_Row2, ROI_Col2)</l>
+<l>reduce_domain (Gray, ROI_Middle, GrayROI_Domain)</l>
+<l>crop_domain (GrayROI_Domain, GrayROI)</l>
+<c></c>
+<l>FullROIWidth := ROI_Col2 - ROI_Col1 + 1</l>
+<l>SplitCol := ROI_Col1 + floor(FullROIWidth / 2.0) - 1</l>
+<l>if (SplitCol &lt;= ROI_Col1)</l>
+<l>    SplitCol := ROI_Col1 + 1</l>
+<l>endif</l>
+<l>if (SplitCol &gt;= ROI_Col2)</l>
+<l>    SplitCol := ROI_Col2 - 1</l>
+<l>endif</l>
+<c></c>
+<l>gen_rectangle1 (ROI_Left, ROI_Row1, ROI_Col1, ROI_Row2, SplitCol)</l>
+<l>gen_rectangle1 (ROI_Right, ROI_Row1, SplitCol + 1, ROI_Row2, ROI_Col2)</l>
+<l>reduce_domain (Gray, ROI_Left, LeftGrayROI_Domain)</l>
+<l>crop_domain (LeftGrayROI_Domain, LeftGrayROI)</l>
+<l>reduce_domain (Gray, ROI_Right, RightGrayROI_Domain)</l>
+<l>crop_domain (RightGrayROI_Domain, RightGrayROI)</l>
+</body>
+<docu id="Preprocess_Gray">
+<parameters>
+<parameter id="GrayROI"/>
+<parameter id="Image"/>
+<parameter id="LeftGrayROI"/>
+<parameter id="RightGrayROI"/>
+</parameters>
+</docu>
+</procedure>
+<procedure name="Preprocess_Color">
+<interface>
+<io>
+<par name="Image" base_type="iconic" dimension="0"/>
+</io>
+<oo>
+<par name="ColorROI" base_type="iconic" dimension="0"/>
+</oo>
+</interface>
+<body>
+<c>* ============================================</c>
+<c>* Procedure: Preprocess_Color</c>
+<c>* Input : Image (3-channel color)</c>
+<c>* Output: ColorROI</c>
+<c>* ============================================</c>
+<l>copy_image (Image, ColorROI)</l>
+<l>return ()</l>
+</body>
+<docu id="Preprocess_Color">
+<parameters>
+<parameter id="ColorROI"/>
+<parameter id="Image"/>
+</parameters>
+</docu>
+</procedure>
+</hdevelop>

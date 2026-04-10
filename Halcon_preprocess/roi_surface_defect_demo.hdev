@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hdevelop file_version="1.2" halcon_version="25.11.0.0">
+<procedure name="main">
+<interface/>
+<body>
+<l>dev_update_off ()</l>
+<l>dev_close_window ()</l>
+<l>ImageFile := 'image/03 啤不齐/正面坏品图片/65.bmp'</l>
+<l>BlackLow := 0</l>
+<l>BlackHigh := 16</l>
+<l>WhiteLow := 248</l>
+<l>WhiteHigh := 255</l>
+<l>read_image (Image, ImageFile)</l>
+<l>count_channels (Image, Channels)</l>
+<l>if (Channels &gt; 1)</l>
+<l>    rgb1_to_gray (Image, Gray)</l>
+<l>else</l>
+<l>    Gray := Image</l>
+<l>endif</l>
+<l>get_image_size (Gray, Width, Height)</l>
+<l>dev_open_window_fit_image (Gray, 0, 0, -1, -1, WindowHandle)</l>
+<l>dev_display (Gray)</l>
+<l>threshold (Gray, RegionBlackRaw, BlackLow, BlackHigh)</l>
+<l>opening_rectangle1 (RegionBlackRaw, RegionBlackOpen, 5, 5)</l>
+<l>union1 (RegionBlackOpen, RegionBlackUnion)</l>
+<l>gen_rectangle1 (BandLeft, 0, 0, Height - 1, round(Width * 0.15))</l>
+<l>gen_rectangle1 (BandRight, 0, round(Width * 0.85), Height - 1, Width - 1)</l>
+<l>gen_rectangle1 (BandTop, 0, 0, round(Height * 0.18), Width - 1)</l>
+<l>gen_rectangle1 (BandBottom, round(Height * 0.82), 0, Height - 1, Width - 1)</l>
+<l>intersection (RegionBlackUnion, BandLeft, LeftBorder)</l>
+<l>intersection (RegionBlackUnion, BandRight, RightBorder)</l>
+<l>intersection (RegionBlackUnion, BandTop, TopBorder)</l>
+<l>intersection (RegionBlackUnion, BandBottom, BottomBorder)</l>
+<l>area_center (LeftBorder, LeftArea, LeftRowTmp, LeftColTmp)</l>
+<l>area_center (RightBorder, RightArea, RightRowTmp, RightColTmp)</l>
+<l>area_center (TopBorder, TopArea, TopRowTmp, TopColTmp)</l>
+<l>area_center (BottomBorder, BottomArea, BottomRowTmp, BottomColTmp)</l>
+<l>ROI_Row1 := round(Height * 0.22)</l>
+<l>ROI_Row2 := round(Height * 0.78)</l>
+<l>ROI_Col1 := round(Width * 0.10)</l>
+<l>ROI_Col2 := round(Width * 0.90)</l>
+<l>if (LeftArea &gt; 0)</l>
+<l>    smallest_rectangle1 (LeftBorder, LR1, LC1, LR2, LC2)</l>
+<l>    ROI_Col1 := LC2 + 5</l>
+<l>endif</l>
+<l>if (RightArea &gt; 0)</l>
+<l>    smallest_rectangle1 (RightBorder, RR1, RC1, RR2, RC2)</l>
+<l>    ROI_Col2 := RC1 - 5</l>
+<l>endif</l>
+<l>if (TopArea &gt; 0)</l>
+<l>    smallest_rectangle1 (TopBorder, TR1, TC1, TR2, TC2)</l>
+<l>    ROI_Row1 := TR2 + 5</l>
+<l>endif</l>
+<l>if (BottomArea &gt; 0)</l>
+<l>    smallest_rectangle1 (BottomBorder, BR1, BC1, BR2, BC2)</l>
+<l>    ROI_Row2 := BR1 - 5</l>
+<l>endif</l>
+<l>if (ROI_Row2 - ROI_Row1 &lt; 150 or ROI_Col2 - ROI_Col1 &lt; 250)</l>
+<l>    ROI_Row1 := round(Height * 0.22)</l>
+<l>    ROI_Row2 := round(Height * 0.78)</l>
+<l>    ROI_Col1 := round(Width * 0.10)</l>
+<l>    ROI_Col2 := round(Width * 0.90)</l>
+<l>endif</l>
+<l>gen_rectangle1 (ROI_Middle, ROI_Row1, ROI_Col1, ROI_Row2, ROI_Col2)</l>
+<l>reduce_domain (Gray, ROI_Middle, GrayROI)</l>
+<l>threshold (GrayROI, RegionWhiteRaw, WhiteLow, WhiteHigh)</l>
+<l>opening_circle (RegionWhiteRaw, RegionWhiteOpen, 1.5)</l>
+<l>union1 (RegionWhiteOpen, RegionWhiteUnion)</l>
+<l>connection (RegionWhiteOpen, WhiteConn)</l>
+<l>select_shape (WhiteConn, WhiteArea, 'area', 'and', 800, 80000)</l>
+<l>select_shape (WhiteArea, WhiteWidth, 'width', 'and', 18, 180)</l>
+<l>select_shape (WhiteWidth, WhiteHeight, 'height', 'and', 60, 320)</l>
+<l>union1 (WhiteHeight, WhitePillars)</l>
+<l>dilation_circle (WhitePillars, WhitePillarsDilate, 4.5)</l>
+<l>difference (ROI_Middle, RegionWhiteUnion, WorkpieceRaw)</l>
+<l>closing_rectangle1 (WorkpieceRaw, WorkpieceClose, 9, 9)</l>
+<l>opening_circle (WorkpieceClose, WorkpieceOpen, 2.5)</l>
+<l>connection (WorkpieceOpen, WorkpieceConn)</l>
+<l>select_shape (WorkpieceConn, WorkpieceArea, 'area', 'and', 30000, 500000)</l>
+<l>select_shape (WorkpieceArea, WorkpieceWidth, 'width', 'and', 180, 700)</l>
+<l>sort_region (WorkpieceWidth, WorkpiecesSorted, 'character', 'true', 'column')</l>
+<l>count_obj (WorkpiecesSorted, NumWorkpieces)</l>
+<l>if (NumWorkpieces &lt; 2)</l>
+<l>    dev_set_color ('red')</l>
+<l>    disp_message (WindowHandle, 'Workpieces not found inside ROI', 'window', 20, 20, 'red', 'false')</l>
+<l>    DemoOK := false</l>
+<l>    stop ()</l>
+<l>endif</l>
+<l>select_obj (WorkpiecesSorted, Workpiece1Raw, 1)</l>
+<l>select_obj (WorkpiecesSorted, Workpiece2Raw, 2)</l>
+<l>fill_up (Workpiece1Raw, Workpiece1Fill)</l>
+<l>fill_up (Workpiece2Raw, Workpiece2Fill)</l>
+<l>closing_circle (Workpiece1Fill, Workpiece1, 3.5)</l>
+<l>closing_circle (Workpiece2Fill, Workpiece2, 3.5)</l>
+<l>gen_empty_obj (Body1)</l>
+<l>gen_empty_obj (Body2)</l>
+<l>gen_empty_obj (Missing1)</l>
+<l>gen_empty_obj (Missing2)</l>
+<l>gen_empty_obj (SurfaceDefect1)</l>
+<l>gen_empty_obj (SurfaceDefect2)</l>
+<l>smallest_rectangle1 (Workpiece1, W1R1, W1C1, W1R2, W1C2)</l>
+<l>gen_rectangle1 (BodySearch1, W1R1 + round((W1R2 - W1R1) * 0.34), W1C1 + round((W1C2 - W1C1) * 0.12), W1R2 - round((W1R2 - W1R1) * 0.34), W1C2 - round((W1C2 - W1C1) * 0.12))</l>
+<l>reduce_domain (Gray, BodySearch1, BodyImage1)</l>
+<l>threshold (BodyImage1, BodyCand1Raw, 45, 185)</l>
+<l>difference (BodyCand1Raw, WhitePillarsDilate, BodyCand1NoWhite)</l>
+<l>opening_rectangle1 (BodyCand1NoWhite, BodyCand1Open, 7, 7)</l>
+<l>connection (BodyCand1Open, BodyCand1Conn)</l>
+<l>select_shape (BodyCand1Conn, BodyCand1Area, 'area', 'and', 6000, 80000)</l>
+<l>select_shape (BodyCand1Area, BodyCand1Width, 'width', 'and', 150, 520)</l>
+<l>select_shape (BodyCand1Width, BodyCand1Height, 'height', 'and', 45, 155)</l>
+<l>select_shape (BodyCand1Height, BodyCand1Rect, 'rectangularity', 'and', 0.55, 1.0)</l>
+<l>count_obj (BodyCand1Rect, NumBodyCand1)</l>
+<l>if (NumBodyCand1 &gt; 0)</l>
+<l>    select_shape_std (BodyCand1Rect, BodyCand1Max, 'max_area', 70)</l>
+<l>    fill_up (BodyCand1Max, Body1Fill)</l>
+<l>    closing_circle (Body1Fill, Body1, 3.5)</l>
+<l>    smallest_rectangle2 (Body1, Row1, Col1, Phi1, Len1_1, Len2_1)</l>
+<l>    gen_rectangle2 (Rect1, Row1, Col1, Phi1, Len1_1, Len2_1)</l>
+<l>    shape_trans (Body1, Convex1, 'convex')</l>
+<l>    intersection (Rect1, Convex1, Expected1Tmp)</l>
+<l>    closing_rectangle1 (Expected1Tmp, Expected1Close, 19, 19)</l>
+<l>    intersection (Expected1Close, Rect1, Expected1)</l>
+<l>    difference (Expected1, Body1, Missing1Tmp)</l>
+<l>    smallest_rectangle1 (Expected1, E1R1, E1C1, E1R2, E1C2)</l>
+<l>    BandW1 := max2(round((E1C2 - E1C1) * 0.10), 14)</l>
+<l>    BandH1 := max2(round((E1R2 - E1R1) * 0.10), 14)</l>
+<l>    gen_rectangle1 (Edge1Left, E1R1, E1C1, E1R2, E1C1 + BandW1)</l>
+<l>    gen_rectangle1 (Edge1Right, E1R1, E1C2 - BandW1, E1R2, E1C2)</l>
+<l>    gen_rectangle1 (Edge1Top, E1R1, E1C1, E1R1 + BandH1, E1C2)</l>
+<l>    gen_rectangle1 (Edge1Bottom, E1R2 - BandH1, E1C1, E1R2, E1C2)</l>
+<l>    concat_obj (Edge1Left, Edge1Right, Edge1LR)</l>
+<l>    concat_obj (Edge1Top, Edge1Bottom, Edge1TB)</l>
+<l>    concat_obj (Edge1LR, Edge1TB, Edge1BandsTmp)</l>
+<l>    union1 (Edge1BandsTmp, Edge1Bands)</l>
+<l>    intersection (Missing1Tmp, Edge1Bands, Missing1Edge)</l>
+<l>    opening_circle (Missing1Edge, Missing1Open, 3.5)</l>
+<l>    connection (Missing1Open, Missing1Conn)</l>
+<l>    select_shape (Missing1Conn, Missing1Area, 'area', 'and', 260, 999999)</l>
+<l>    select_shape (Missing1Area, Missing1WH, 'width', 'and', 16, 999999)</l>
+<l>    select_shape (Missing1WH, Missing1, 'height', 'and', 16, 999999)</l>
+<l>endif</l>
+<l>smallest_rectangle1 (Workpiece2, W2R1, W2C1, W2R2, W2C2)</l>
+<l>gen_rectangle1 (BodySearch2, W2R1 + round((W2R2 - W2R1) * 0.34), W2C1 + round((W2C2 - W2C1) * 0.12), W2R2 - round((W2R2 - W2R1) * 0.34), W2C2 - round((W2C2 - W2C1) * 0.12))</l>
+<l>reduce_domain (Gray, BodySearch2, BodyImage2)</l>
+<l>threshold (BodyImage2, BodyCand2Raw, 45, 185)</l>
+<l>difference (BodyCand2Raw, WhitePillarsDilate, BodyCand2NoWhite)</l>
+<l>opening_rectangle1 (BodyCand2NoWhite, BodyCand2Open, 7, 7)</l>
+<l>connection (BodyCand2Open, BodyCand2Conn)</l>
+<l>select_shape (BodyCand2Conn, BodyCand2Area, 'area', 'and', 6000, 80000)</l>
+<l>select_shape (BodyCand2Area, BodyCand2Width, 'width', 'and', 150, 520)</l>
+<l>select_shape (BodyCand2Width, BodyCand2Height, 'height', 'and', 45, 155)</l>
+<l>select_shape (BodyCand2Height, BodyCand2Rect, 'rectangularity', 'and', 0.55, 1.0)</l>
+<l>count_obj (BodyCand2Rect, NumBodyCand2)</l>
+<l>if (NumBodyCand2 &gt; 0)</l>
+<l>    select_shape_std (BodyCand2Rect, BodyCand2Max, 'max_area', 70)</l>
+<l>    fill_up (BodyCand2Max, Body2Fill)</l>
+<l>    closing_circle (Body2Fill, Body2, 3.5)</l>
+<l>    smallest_rectangle2 (Body2, Row2, Col2, Phi2, Len1_2, Len2_2)</l>
+<l>    gen_rectangle2 (Rect2, Row2, Col2, Phi2, Len1_2, Len2_2)</l>
+<l>    shape_trans (Body2, Convex2, 'convex')</l>
+<l>    intersection (Rect2, Convex2, Expected2Tmp)</l>
+<l>    closing_rectangle1 (Expected2Tmp, Expected2Close, 19, 19)</l>
+<l>    intersection (Expected2Close, Rect2, Expected2)</l>
+<l>    difference (Expected2, Body2, Missing2Tmp)</l>
+<l>    smallest_rectangle1 (Expected2, E2R1, E2C1, E2R2, E2C2)</l>
+<l>    BandW2 := max2(round((E2C2 - E2C1) * 0.10), 14)</l>
+<l>    BandH2 := max2(round((E2R2 - E2R1) * 0.10), 14)</l>
+<l>    gen_rectangle1 (Edge2Left, E2R1, E2C1, E2R2, E2C1 + BandW2)</l>
+<l>    gen_rectangle1 (Edge2Right, E2R1, E2C2 - BandW2, E2R2, E2C2)</l>
+<l>    gen_rectangle1 (Edge2Top, E2R1, E2C1, E2R1 + BandH2, E2C2)</l>
+<l>    gen_rectangle1 (Edge2Bottom, E2R2 - BandH2, E2C1, E2R2, E2C2)</l>
+<l>    concat_obj (Edge2Left, Edge2Right, Edge2LR)</l>
+<l>    concat_obj (Edge2Top, Edge2Bottom, Edge2TB)</l>
+<l>    concat_obj (Edge2LR, Edge2TB, Edge2BandsTmp)</l>
+<l>    union1 (Edge2BandsTmp, Edge2Bands)</l>
+<l>    intersection (Missing2Tmp, Edge2Bands, Missing2Edge)</l>
+<l>    opening_circle (Missing2Edge, Missing2Open, 3.5)</l>
+<l>    connection (Missing2Open, Missing2Conn)</l>
+<l>    select_shape (Missing2Conn, Missing2Area, 'area', 'and', 260, 999999)</l>
+<l>    select_shape (Missing2Area, Missing2WH, 'width', 'and', 16, 999999)</l>
+<l>    select_shape (Missing2WH, Missing2, 'height', 'and', 16, 999999)</l>
+<l>endif</l>
+<l>if (NumBodyCand1 &gt; 0)</l>
+<l>    smallest_rectangle1 (Body1, B1R1, B1C1, B1R2, B1C2)</l>
+<l>    gen_rectangle1 (SurfaceROI1, B1R1 + round((B1R2 - B1R1) * 0.28), B1C1 + round((B1C2 - B1C1) * 0.12), B1R2 - round((B1R2 - B1R1) * 0.28), B1C2 - round((B1C2 - B1C1) * 0.12))</l>
+<l>    intersection (SurfaceROI1, Body1, Workpiece1Inner)</l>
+<l>    reduce_domain (Gray, Workpiece1Inner, SurfaceImage1)</l>
+<l>    mean_image (SurfaceImage1, MeanImage1, 41, 41)</l>
+<l>    dyn_threshold (SurfaceImage1, MeanImage1, SurfaceDark1Raw, 22, 'dark')</l>
+<l>    opening_circle (SurfaceDark1Raw, SurfaceDark1Open, 2.5)</l>
+<l>    connection (SurfaceDark1Open, SurfaceDark1Conn)</l>
+<l>    select_shape (SurfaceDark1Conn, SurfaceDark1Area, 'area', 'and', 90, 2200)</l>
+<l>    select_shape (SurfaceDark1Area, SurfaceDark1Width, 'width', 'and', 8, 120)</l>
+<l>    select_shape (SurfaceDark1Width, SurfaceDark1Height, 'height', 'and', 8, 120)</l>
+<l>    dyn_threshold (SurfaceImage1, MeanImage1, SurfaceBright1Raw, 26, 'light')</l>
+<l>    opening_rectangle1 (SurfaceBright1Raw, SurfaceBright1Open, 3, 9)</l>
+<l>    connection (SurfaceBright1Open, SurfaceBright1Conn)</l>
+<l>    select_shape (SurfaceBright1Conn, SurfaceBright1Area, 'area', 'and', 70, 2200)</l>
+<l>    select_shape (SurfaceBright1Area, SurfaceBright1Width, 'width', 'and', 10, 160)</l>
+<l>    select_shape (SurfaceBright1Width, SurfaceBright1Height, 'height', 'and', 4, 80)</l>
+<l>    concat_obj (SurfaceDark1Height, SurfaceBright1Height, SurfaceDefect1Tmp)</l>
+<l>    union1 (SurfaceDefect1Tmp, SurfaceDefect1Union)</l>
+<l>    connection (SurfaceDefect1Union, SurfaceDefect1Conn)</l>
+<l>    select_shape (SurfaceDefect1Conn, SurfaceDefect1, 'area', 'and', 90, 2500)</l>
+<l>endif</l>
+<l>if (NumBodyCand2 &gt; 0)</l>
+<l>    smallest_rectangle1 (Body2, B2R1, B2C1, B2R2, B2C2)</l>
+<l>    gen_rectangle1 (SurfaceROI2, B2R1 + round((B2R2 - B2R1) * 0.28), B2C1 + round((B2C2 - B2C1) * 0.12), B2R2 - round((B2R2 - B2R1) * 0.28), B2C2 - round((B2C2 - B2C1) * 0.12))</l>
+<l>    intersection (SurfaceROI2, Body2, Workpiece2Inner)</l>
+<l>    reduce_domain (Gray, Workpiece2Inner, SurfaceImage2)</l>
+<l>    mean_image (SurfaceImage2, MeanImage2, 41, 41)</l>
+<l>    dyn_threshold (SurfaceImage2, MeanImage2, SurfaceDark2Raw, 22, 'dark')</l>
+<l>    opening_circle (SurfaceDark2Raw, SurfaceDark2Open, 2.5)</l>
+<l>    connection (SurfaceDark2Open, SurfaceDark2Conn)</l>
+<l>    select_shape (SurfaceDark2Conn, SurfaceDark2Area, 'area', 'and', 90, 2200)</l>
+<l>    select_shape (SurfaceDark2Area, SurfaceDark2Width, 'width', 'and', 8, 120)</l>
+<l>    select_shape (SurfaceDark2Width, SurfaceDark2Height, 'height', 'and', 8, 120)</l>
+<l>    dyn_threshold (SurfaceImage2, MeanImage2, SurfaceBright2Raw, 26, 'light')</l>
+<l>    opening_rectangle1 (SurfaceBright2Raw, SurfaceBright2Open, 3, 9)</l>
+<l>    connection (SurfaceBright2Open, SurfaceBright2Conn)</l>
+<l>    select_shape (SurfaceBright2Conn, SurfaceBright2Area, 'area', 'and', 70, 2200)</l>
+<l>    select_shape (SurfaceBright2Area, SurfaceBright2Width, 'width', 'and', 10, 160)</l>
+<l>    select_shape (SurfaceBright2Width, SurfaceBright2Height, 'height', 'and', 4, 80)</l>
+<l>    concat_obj (SurfaceDark2Height, SurfaceBright2Height, SurfaceDefect2Tmp)</l>
+<l>    union1 (SurfaceDefect2Tmp, SurfaceDefect2Union)</l>
+<l>    connection (SurfaceDefect2Union, SurfaceDefect2Conn)</l>
+<l>    select_shape (SurfaceDefect2Conn, SurfaceDefect2, 'area', 'and', 90, 2500)</l>
+<l>endif</l>
+<l>concat_obj (Missing1, Missing2, MissingAllTmp)</l>
+<l>union1 (MissingAllTmp, MissingAllUnion)</l>
+<l>connection (MissingAllUnion, MissingAll)</l>
+<l>concat_obj (SurfaceDefect1, SurfaceDefect2, SurfaceAllTmp)</l>
+<l>union1 (SurfaceAllTmp, SurfaceAllUnion)</l>
+<l>connection (SurfaceAllUnion, SurfaceAll)</l>
+<l>NumBodies := NumBodyCand1 + NumBodyCand2</l>
+<l>ExpectedBodies := 2</l>
+<l>MissingBodies := ExpectedBodies - NumBodies</l>
+<l>count_obj (MissingAll, NumMissing)</l>
+<l>count_obj (SurfaceAll, NumSurface)</l>
+<l>dev_display (Gray)</l>
+<l>dev_set_line_width (3)</l>
+<l>dev_set_draw ('margin')</l>
+<l>dev_set_color ('yellow')</l>
+<l>dev_display (ROI_Middle)</l>
+<l>dev_set_color ('green')</l>
+<l>if (NumBodyCand1 &gt; 0)</l>
+<l>    dev_display (Body1)</l>
+<l>endif</l>
+<l>if (NumBodyCand2 &gt; 0)</l>
+<l>    dev_display (Body2)</l>
+<l>endif</l>
+<l>dev_set_color ('red')</l>
+<l>dev_display (MissingAll)</l>
+<l>dev_set_color ('cyan')</l>
+<l>dev_display (SurfaceAll)</l>
+<l>if (NumMissing &gt; 0)</l>
+<l>    for IndexMissing := 1 to NumMissing by 1</l>
+<l>        select_obj (MissingAll, MissingOne, IndexMissing)</l>
+<l>        smallest_rectangle1 (MissingOne, MR1, MC1, MR2, MC2)</l>
+<l>        gen_rectangle1 (MissingBox, MR1, MC1, MR2, MC2)</l>
+<l>        dev_set_color ('red')</l>
+<l>        dev_display (MissingBox)</l>
+<l>    endfor</l>
+<l>endif</l>
+<l>if (NumSurface &gt; 0)</l>
+<l>    for IndexSurface := 1 to NumSurface by 1</l>
+<l>        select_obj (SurfaceAll, SurfaceOne, IndexSurface)</l>
+<l>        smallest_rectangle1 (SurfaceOne, SR1, SC1, SR2, SC2)</l>
+<l>        gen_rectangle1 (SurfaceBox, SR1, SC1, SR2, SC2)</l>
+<l>        dev_set_color ('cyan')</l>
+<l>        dev_display (SurfaceBox)</l>
+<l>    endfor</l>
+<l>endif</l>
+<l>if (MissingBodies &gt; 0)</l>
+<l>    ResultText := '缺少工件'</l>
+<l>    ResultColor := 'orange red'</l>
+<l>elseif (NumBodies = 0)</l>
+<l>    ResultText := '无工件'</l>
+<l>    ResultColor := 'orange red'</l>
+<l>elseif (NumMissing &gt; 0 or NumSurface &gt; 0)</l>
+<l>    ResultText := 'NG'</l>
+<l>    ResultColor := 'red'</l>
+<l>else</l>
+<l>    ResultText := 'OK'</l>
+<l>    ResultColor := 'green'</l>
+<l>endif</l>
+<l>disp_message (WindowHandle, '黄色: 粗ROI', 'window', 20, 20, 'yellow', 'false')</l>
+<l>disp_message (WindowHandle, '绿色: 工件本体', 'window', 50, 20, 'green', 'false')</l>
+<l>disp_message (WindowHandle, '红色: 轮廓缺失', 'window', 80, 20, 'red', 'false')</l>
+<l>disp_message (WindowHandle, '青色: 表面异常', 'window', 110, 20, 'cyan', 'false')</l>
+<l>disp_message (WindowHandle, '检测结果: ' + ResultText, 'window', 140, 20, ResultColor, 'true')</l>
+<l>disp_message (WindowHandle, '工件数量: ' + NumBodies$'.0f' + '  缺少工件: ' + MissingBodies$'.0f' + '  轮廓缺失: ' + NumMissing$'.0f' + '  表面数量: ' + NumSurface$'.0f', 'window', 170, 20, 'white', 'false')</l>
+<l>dump_window_image (ResultImage, WindowHandle)</l>
+<l>zoom_image_factor (ResultImage, ResultImageZoom, 2.0, 2.0, 'constant')</l>
+<l>write_image (ResultImageZoom, 'png', 0, 'demo_output/halcon_roi_result.png')</l>
+<l>DemoOK := true</l>
+</body>
+<docu id="main">
+<parameters/>
+</docu>
+</procedure>
+</hdevelop>

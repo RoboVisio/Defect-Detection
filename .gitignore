@@ -1,0 +1,16 @@
+.idea/
+.vs/
+.vscode/
+.claude/
+
+dll/.vs/
+dll/out/
+
+OK_Detection/.idea/
+OK_Detection/results/
+
+*.ckpt
+*.onnx
+*.ipch
+*.db
+*.VC.db

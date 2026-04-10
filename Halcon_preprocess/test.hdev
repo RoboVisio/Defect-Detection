@@ -1,0 +1,356 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hdevelop file_version="1.2" halcon_version="25.11.0.0">
+<procedure name="main">
+<interface/>
+<body>
+<c>* =========================================================</c>
+<c>* 半导体工件检测 - 完整整合版</c>
+<c>* 流程：</c>
+<c>* 1) 0~16 提取黑框</c>
+<c>* 2) 根据黑框得到中间 ROI</c>
+<c>* 3) ROI 内 248~255 提取白色轮廓</c>
+<c>* 4) ROI - 白色轮廓 = 工件区域</c>
+<c>* 5) 工件缺失检测</c>
+<c>* 6) 工件表面划痕 / 凹痕检测</c>
+<c>* 7) OK / NG 判定</c>
+<c>* =========================================================</c>
+<c></c>
+<l>dev_update_off ()</l>
+<l>dev_close_window ()</l>
+<c></c>
+<l>read_image (Image, 'D:/Project/半导体缺陷检测/image/03 啤不齐/正面坏品图片/65.bmp')</l>
+<l>get_image_size (Image, Width, Height)</l>
+<l>dev_open_window_fit_image (Image, 0, 0, -1, -1, WindowHandle)</l>
+<c></c>
+<l>count_channels (Image, Channels)</l>
+<l>if (Channels &gt; 1)</l>
+<l>    rgb1_to_gray (Image, Gray)</l>
+<l>else</l>
+<l>    Gray := Image</l>
+<l>endif</l>
+<c></c>
+<c>* 先取黑区域</c>
+<l>threshold (Gray, BlackRegion, 0, 16)</l>
+<l>opening_rectangle1 (BlackRegion, BlackOpen, 3, 3)</l>
+<c></c>
+<c>* ----------------------------------------</c>
+<c>* 行投影、列投影</c>
+<c>* ----------------------------------------</c>
+<l>projection (BlackOpen, RowProjection, ColumnProjection)</l>
+<c></c>
+<c>* RowProjection: 每一行黑像素数量</c>
+<c>* ColumnProjection: 每一列黑像素数量</c>
+<c></c>
+<c>* 转 tuple 方便处理</c>
+<l>Rows := |RowProjection|</l>
+<l>Cols := |ColumnProjection|</l>
+<c></c>
+<c>* 经验阈值：这一行/列如果黑像素很多，就认为可能是分隔线</c>
+<l>RowThresh := Width * 0.60</l>
+<l>ColThresh := Height * 0.35</l>
+<c></c>
+<l>CandidateRows := []</l>
+<l>for R := 0 to Rows - 1 by 1</l>
+<l>    if (RowProjection[R] &gt; RowThresh)</l>
+<l>        CandidateRows := [CandidateRows, R]</l>
+<l>    endif</l>
+<l>endfor</l>
+<c></c>
+<l>CandidateCols := []</l>
+<l>for C := 0 to Cols - 1 by 1</l>
+<l>    if (ColumnProjection[C] &gt; ColThresh)</l>
+<l>        CandidateCols := [CandidateCols, C]</l>
+<l>    endif</l>
+<l>endfor</l>
+<c></c>
+<c>* ----------------------------------------</c>
+<c>* 合并连续行 -&gt; 取每段中心</c>
+<c>* ----------------------------------------</c>
+<l>RowCenters := []</l>
+<l>if (|CandidateRows| &gt; 0)</l>
+<l>    StartR := CandidateRows[0]</l>
+<l>    PrevR := CandidateRows[0]</l>
+<c></c>
+<l>    for I := 1 to |CandidateRows| - 1 by 1</l>
+<l>        CurrR := CandidateRows[I]</l>
+<l>        if (CurrR - PrevR &gt; 3)</l>
+<l>            CenterR := int((StartR + PrevR) / 2)</l>
+<l>            RowCenters := [RowCenters, CenterR]</l>
+<l>            StartR := CurrR</l>
+<l>        endif</l>
+<l>        PrevR := CurrR</l>
+<l>    endfor</l>
+<c></c>
+<l>    CenterR := int((StartR + PrevR) / 2)</l>
+<l>    RowCenters := [RowCenters, CenterR]</l>
+<l>endif</l>
+<c></c>
+<c>* ----------------------------------------</c>
+<c>* 合并连续列 -&gt; 取每段中心</c>
+<c>* ----------------------------------------</c>
+<l>ColCenters := []</l>
+<l>if (|CandidateCols| &gt; 0)</l>
+<l>    StartC := CandidateCols[0]</l>
+<l>    PrevC := CandidateCols[0]</l>
+<c></c>
+<l>    for I := 1 to |CandidateCols| - 1 by 1</l>
+<l>        CurrC := CandidateCols[I]</l>
+<l>        if (CurrC - PrevC &gt; 3)</l>
+<l>            CenterC := int((StartC + PrevC) / 2)</l>
+<l>            ColCenters := [ColCenters, CenterC]</l>
+<l>            ColCenters := ColCenters</l>
+<l>            StartC := CurrC</l>
+<l>        endif</l>
+<l>        PrevC := CurrC</l>
+<l>    endfor</l>
+<c></c>
+<l>    CenterC := int((StartC + PrevC) / 2)</l>
+<l>    ColCenters := [ColCenters, CenterC]</l>
+<l>endif</l>
+<c></c>
+<l>ImageCenterRow := Height / 2.0</l>
+<l>ImageCenterCol := Width / 2.0</l>
+<c></c>
+<c>* 找离中心最近的上横线、下横线</c>
+<l>TopLine := -1</l>
+<l>BottomLine := -1</l>
+<l>MinTopDist := 999999</l>
+<l>MinBottomDist := 999999</l>
+<c></c>
+<l>for I := 0 to |RowCenters| - 1 by 1</l>
+<l>    R := RowCenters[I]</l>
+<l>    if (R &lt; ImageCenterRow)</l>
+<l>        Dist := ImageCenterRow - R</l>
+<l>        if (Dist &lt; MinTopDist)</l>
+<l>            MinTopDist := Dist</l>
+<l>            TopLine := R</l>
+<l>        endif</l>
+<l>    endif</l>
+<l>    if (R &gt; ImageCenterRow)</l>
+<l>        Dist := R - ImageCenterRow</l>
+<l>        if (Dist &lt; MinBottomDist)</l>
+<l>            MinBottomDist := Dist</l>
+<l>            BottomLine := R</l>
+<l>        endif</l>
+<l>    endif</l>
+<l>endfor</l>
+<c></c>
+<c>* 找离中心最近的左竖线、右竖线</c>
+<l>LeftLine := -1</l>
+<l>RightLine := -1</l>
+<l>MinLeftDist := 999999</l>
+<l>MinRightDist := 999999</l>
+<c></c>
+<l>for I := 0 to |ColCenters| - 1 by 1</l>
+<l>    C := ColCenters[I]</l>
+<l>    if (C &lt; ImageCenterCol)</l>
+<l>        Dist := ImageCenterCol - C</l>
+<l>        if (Dist &lt; MinLeftDist)</l>
+<l>            MinLeftDist := Dist</l>
+<l>            LeftLine := C</l>
+<l>        endif</l>
+<l>    endif</l>
+<l>    if (C &gt; ImageCenterCol)</l>
+<l>        Dist := C - ImageCenterCol</l>
+<l>        if (Dist &lt; MinRightDist)</l>
+<l>            MinRightDist := Dist</l>
+<l>            RightLine := C</l>
+<l>        endif</l>
+<l>    endif</l>
+<l>endfor</l>
+<c></c>
+<l>if (TopLine &lt; 0 or BottomLine &lt; 0 or LeftLine &lt; 0 or RightLine &lt; 0)</l>
+<l>    dev_display (Gray)</l>
+<l>    disp_message (WindowHandle, 'ROI定位失败，请检查0~16阈值或投影阈值', 'window', 20, 20, 'red', 'false')</l>
+<l>    stop ()</l>
+<l>endif</l>
+<c></c>
+<c>* 向内缩一点，避免压在线上</c>
+<l>MarginR := 3</l>
+<l>MarginC := 3</l>
+<c></c>
+<l>gen_rectangle1 (ROI_Middle, TopLine + MarginR, LeftLine + MarginC, BottomLine - MarginR, RightLine - MarginC)</l>
+<c></c>
+<l>dev_display (Gray)</l>
+<l>dev_set_color ('green')</l>
+<l>dev_set_draw ('margin')</l>
+<l>dev_set_line_width (2)</l>
+<l>dev_display (ROI_Middle)</l>
+<l>stop ()</l>
+<c>* ---------------------------------------------------------</c>
+<c>* 4. ROI 内提取白色轮廓：248~255</c>
+<c>* ---------------------------------------------------------</c>
+<l>reduce_domain (Gray, ROI_Middle_Inner, GrayROI)</l>
+<l>threshold (GrayROI, WhiteRegion, 248, 255)</l>
+<c></c>
+<c>* 适当开运算去小毛刺</c>
+<l>opening_circle (WhiteRegion, WhiteOpen, 1.5)</l>
+<l>connection (WhiteOpen, WhiteConn)</l>
+<l>select_shape (WhiteConn, WhiteSel, 'area', 'and', 20, 999999)</l>
+<c></c>
+<c>* ---------------------------------------------------------</c>
+<c>* 5. 背景减法：ROI - 白色区域 = 工件候选区域</c>
+<c>* ---------------------------------------------------------</c>
+<l>difference (ROI_Middle_Inner, WhiteSel, WorkpieceTmp)</l>
+<c></c>
+<l>connection (WorkpieceTmp, WorkpieceConn)</l>
+<l>select_shape (WorkpieceConn, WorkpieceSel, 'area', 'and', 1500, 999999)</l>
+<c></c>
+<c>* 保留左右两个工件</c>
+<l>sort_region (WorkpieceSel, WorkpieceSorted, 'character', 'true', 'column')</l>
+<l>count_obj (WorkpieceSorted, NumWork)</l>
+<c></c>
+<l>if (NumWork &lt; 2)</l>
+<l>    dev_display (Gray)</l>
+<l>    dev_set_color ('green')</l>
+<l>    dev_display (ROI_Middle_Inner)</l>
+<l>    dev_set_color ('red')</l>
+<l>    disp_message (WindowHandle, '工件提取失败，请调白色阈值或面积范围', 'window', 20, 20, 'red', 'false')</l>
+<l>    stop ()</l>
+<l>endif</l>
+<c></c>
+<l>select_obj (WorkpieceSorted, WP1, 1)</l>
+<l>select_obj (WorkpieceSorted, WP2, 2)</l>
+<c></c>
+<c>* 填孔、平滑</c>
+<l>fill_up (WP1, WP1Fill)</l>
+<l>fill_up (WP2, WP2Fill)</l>
+<l>closing_circle (WP1Fill, WP1Clean, 2.5)</l>
+<l>closing_circle (WP2Fill, WP2Clean, 2.5)</l>
+<c></c>
+<l>union2 (WP1Clean, WP2Clean, WPAll)</l>
+<c></c>
+<c>* ---------------------------------------------------------</c>
+<c>* 6. 缺失检测</c>
+<c>*    用工件最小外接矩形 - 工件区域</c>
+<c>* ---------------------------------------------------------</c>
+<c></c>
+<c>* 左工件</c>
+<l>smallest_rectangle1 (WP1Clean, R1_1, C1_1, R1_2, C1_2)</l>
+<l>gen_rectangle1 (WP1Rect, R1_1, C1_1, R1_2, C1_2)</l>
+<l>difference (WP1Rect, WP1Clean, Miss1Tmp)</l>
+<l>opening_circle (Miss1Tmp, Miss1Open, 1.5)</l>
+<l>connection (Miss1Open, Miss1Conn)</l>
+<l>select_shape (Miss1Conn, Miss1, 'area', 'and', 50, 999999)</l>
+<c></c>
+<c>* 右工件</c>
+<l>smallest_rectangle1 (WP2Clean, R2_1, C2_1, R2_2, C2_2)</l>
+<l>gen_rectangle1 (WP2Rect, R2_1, C2_1, R2_2, C2_2)</l>
+<l>difference (WP2Rect, WP2Clean, Miss2Tmp)</l>
+<l>opening_circle (Miss2Tmp, Miss2Open, 1.5)</l>
+<l>connection (Miss2Open, Miss2Conn)</l>
+<l>select_shape (Miss2Conn, Miss2, 'area', 'and', 50, 999999)</l>
+<c></c>
+<l>union2 (Miss1, Miss2, MissingAll)</l>
+<l>count_obj (MissingAll, MissingNum)</l>
+<c></c>
+<c>* ---------------------------------------------------------</c>
+<c>* 7. 凹痕检测（低灰度）</c>
+<c>*    只在工件内部检测</c>
+<c>* ---------------------------------------------------------</c>
+<l>erosion_circle (WPAll, WPInner, 3.5)</l>
+<l>reduce_domain (Gray, WPInner, GrayWP)</l>
+<c></c>
+<c>* 凹痕：偏暗</c>
+<l>threshold (GrayWP, DentDark, 0, 80)</l>
+<l>opening_circle (DentDark, DentOpen, 1.5)</l>
+<l>connection (DentOpen, DentConn)</l>
+<l>select_shape (DentConn, DentArea, 'area', 'and', 8, 400)</l>
+<c></c>
+<c>* 可选：过滤细长杂点</c>
+<l>select_shape (DentArea, DentFinal, 'circularity', 'and', 0.05, 1.0)</l>
+<c></c>
+<l>count_obj (DentFinal, DentNum)</l>
+<c></c>
+<c>* ---------------------------------------------------------</c>
+<c>* 8. 划痕检测（暗划痕 + 亮划痕）</c>
+<c>* ---------------------------------------------------------</c>
+<l>mean_image (GrayWP, MeanImg, 15, 15)</l>
+<c></c>
+<c>* 暗划痕</c>
+<l>dyn_threshold (GrayWP, MeanImg, ScratchDark, 8, 'dark')</l>
+<l>opening_rectangle1 (ScratchDark, ScratchDarkOpen, 1, 7)</l>
+<l>connection (ScratchDarkOpen, ScratchDarkConn)</l>
+<l>select_shape (ScratchDarkConn, ScratchDarkSel1, 'area', 'and', 10, 1000)</l>
+<l>select_shape (ScratchDarkSel1, ScratchDarkSel2, 'anisometry', 'and', 2.0, 99999)</l>
+<c></c>
+<c>* 亮划痕</c>
+<l>dyn_threshold (GrayWP, MeanImg, ScratchBright, 8, 'light')</l>
+<l>opening_rectangle1 (ScratchBright, ScratchBrightOpen, 1, 7)</l>
+<l>connection (ScratchBrightOpen, ScratchBrightConn)</l>
+<l>select_shape (ScratchBrightConn, ScratchBrightSel1, 'area', 'and', 10, 1000)</l>
+<l>select_shape (ScratchBrightSel1, ScratchBrightSel2, 'anisometry', 'and', 2.0, 99999)</l>
+<c></c>
+<l>union2 (ScratchDarkSel2, ScratchBrightSel2, ScratchAll)</l>
+<l>count_obj (ScratchAll, ScratchNum)</l>
+<c></c>
+<c>* ---------------------------------------------------------</c>
+<c>* 9. OK / NG 判定</c>
+<c>* ---------------------------------------------------------</c>
+<l>NG_Flag := 0</l>
+<c></c>
+<l>if (MissingNum &gt; 0)</l>
+<l>    NG_Flag := 1</l>
+<l>endif</l>
+<c></c>
+<l>if (DentNum &gt; 0)</l>
+<l>    NG_Flag := 1</l>
+<l>endif</l>
+<c></c>
+<l>if (ScratchNum &gt; 0)</l>
+<l>    NG_Flag := 1</l>
+<l>endif</l>
+<c></c>
+<c>* ---------------------------------------------------------</c>
+<c>* 10. 显示结果</c>
+<c>* ---------------------------------------------------------</c>
+<l>dev_display (Gray)</l>
+<c></c>
+<c>* 中间ROI</c>
+<l>dev_set_draw ('margin')</l>
+<l>dev_set_line_width (2)</l>
+<l>dev_set_color ('yellow')</l>
+<l>dev_display (ROI_Middle_Inner)</l>
+<c></c>
+<c>* 工件</c>
+<l>dev_set_color ('green')</l>
+<l>dev_display (WP1Clean)</l>
+<l>dev_display (WP2Clean)</l>
+<c></c>
+<c>* 缺失</c>
+<l>dev_set_draw ('fill')</l>
+<l>dev_set_color ('red')</l>
+<l>dev_display (MissingAll)</l>
+<c></c>
+<c>* 凹痕</c>
+<l>dev_set_color ('magenta')</l>
+<l>dev_display (DentFinal)</l>
+<c></c>
+<c>* 划痕</c>
+<l>dev_set_color ('cyan')</l>
+<l>dev_display (ScratchAll)</l>
+<c></c>
+<c>* 统计</c>
+<l>area_center (MissingAll, MissingArea, RowM, ColM)</l>
+<l>area_center (DentFinal, DentAreaSum, RowD, ColD)</l>
+<l>area_center (ScratchAll, ScratchAreaSum, RowS, ColS)</l>
+<c></c>
+<l>Msg1 := '缺失个数: ' + MissingNum</l>
+<l>Msg2 := '凹痕个数: ' + DentNum</l>
+<l>Msg3 := '划痕个数: ' + ScratchNum</l>
+<c></c>
+<l>disp_message (WindowHandle, Msg1, 'window', 20, 20, 'white', 'false')</l>
+<l>disp_message (WindowHandle, Msg2, 'window', 50, 20, 'white', 'false')</l>
+<l>disp_message (WindowHandle, Msg3, 'window', 80, 20, 'white', 'false')</l>
+<c></c>
+<l>if (NG_Flag == 1)</l>
+<l>    disp_message (WindowHandle, 'NG', 'window', 120, 20, 'red', 'true')</l>
+<l>else</l>
+<l>    disp_message (WindowHandle, 'OK', 'window', 120, 20, 'green', 'true')</l>
+<l>endif</l>
+</body>
+<docu id="main">
+<parameters/>
+</docu>
+</procedure>
+</hdevelop>
